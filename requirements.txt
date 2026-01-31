@@ -1,0 +1,10 @@
+torch
+transformers
+datasets
+accelerate
+trl
+peft
+scikit-learn
+evaluate
+matplotlib
+numpy

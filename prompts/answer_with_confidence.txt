@@ -1,0 +1,14 @@
+You are a medical expert.
+
+Question:
+{question}
+
+Options:
+A. ...
+B. ...
+C. ...
+D. ...
+
+Respond in the following format:
+Answer: <option letter>
+Confidence: <number between 0 and 1>
