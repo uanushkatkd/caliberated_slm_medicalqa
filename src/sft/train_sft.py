@@ -65,7 +65,7 @@ def main():
         learning_rate=2e-4,
         fp16=True,
         logging_steps=50,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=500,
         save_steps=500,
         save_total_limit=2,
