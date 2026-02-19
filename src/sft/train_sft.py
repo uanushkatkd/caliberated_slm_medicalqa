@@ -1,11 +1,10 @@
 # src/sft/train_sft.py
 
-import json
 import torch
 from datasets import load_dataset
 from transformers import Trainer, TrainingArguments, DataCollatorForLanguageModeling
 
-from src.models.load_model import load_base_model
+from src.models.load_model import load_base_model, get_device
 from src.models.lora_config import get_lora_config
 from peft import get_peft_model
 
@@ -26,12 +25,15 @@ def load_sft_dataset():
     )
 
 
+MAX_LENGTH = 512  # Reduced for 16GB RAM
+
+
 def tokenize_fn(example, tokenizer):
     text = example["prompt"] + "\n" + example["response"]
     tokens = tokenizer(
         text,
         truncation=True,
-        max_length=512,
+        max_length=MAX_LENGTH,
         padding=False
     )
     tokens["labels"] = tokens["input_ids"].copy()
@@ -39,9 +41,18 @@ def tokenize_fn(example, tokenizer):
 
 
 def main():
-    model, tokenizer = load_base_model(MODEL_NAME)
+    device = get_device()
+    print(f"Using device: {device}")
+
+    # Load model in fp16 to save memory (~6GB instead of ~12GB)
+    model, tokenizer = load_base_model(MODEL_NAME, device=device, use_fp16=True)
+
+    # Enable gradient checkpointing BEFORE wrapping with PEFT
+    model.gradient_checkpointing_enable()
+
     lora_config = get_lora_config(r=4, lora_alpha=8)
     model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     dataset = load_sft_dataset()
 
@@ -56,6 +67,9 @@ def main():
         mlm=False
     )
 
+    # MPS doesn't support fp16 mixed-precision training
+    use_fp16 = device == "cuda"
+
     training_args = TrainingArguments(
         output_dir=OUTPUT_DIR,
         per_device_train_batch_size=1,
@@ -63,13 +77,15 @@ def main():
         gradient_accumulation_steps=16,
         num_train_epochs=1,
         learning_rate=2e-4,
-        fp16=True,
+        fp16=use_fp16,
         logging_steps=50,
         eval_strategy="steps",
         eval_steps=500,
         save_steps=500,
         save_total_limit=2,
-        report_to="none"
+        report_to="none",
+        dataloader_pin_memory=False,
+        gradient_checkpointing=True,  # Saves memory by recomputing activations
     )
 
     trainer = Trainer(
