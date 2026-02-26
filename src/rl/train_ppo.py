@@ -179,24 +179,42 @@ def main():
         ref_model.to(device)
 
     # PPO training loop
+    # PPO training loop
     for step, ex in enumerate(dataset):
         prompt = ex["prompt"]
         correct_option = ex["correct_option"]
 
-        query_tensors = tokenizer(
+        # 1) Tokenize prompt
+        inputs = tokenizer(
             prompt,
             return_tensors="pt",
             padding=False,
             truncation=True,
-        ).input_ids.to(model.device)
+        )
+        query_tensors = inputs.input_ids.to(model.device)
 
-        response_tensors = ppo_trainer.generate(query_tensors)
+        # 2) Generate with the POLICY model (not PPOTrainer)
+        with torch.no_grad():
+            gen_outputs = model.generate(
+                query_tensors,
+                max_new_tokens=64,                 # tune this
+                do_sample=True,
+                top_p=0.9,
+                temperature=0.7,
+                pad_token_id=tokenizer.eos_token_id,
+            )
 
+        # 3) Slice out only the newly generated tokens (the response)
+        response_tensors = gen_outputs[:, query_tensors.shape[1]:]
+
+        # 4) Decode response text (for your custom reward)
         response_text = tokenizer.decode(response_tensors[0], skip_special_tokens=True)
 
+        # 5) Compute reward yourself
         reward, valid = compute_reward(response_text, correct_option)
-        rewards = [torch.tensor(reward, dtype=torch.float32, device=model.device)]
+        rewards = [torch.tensor(reward, dtype=torch.float32, device=policy_model.device)]
 
+        # 6) PPO step: pass query and response tensors
         ppo_trainer.step([query_tensors[0]], [response_tensors[0]], rewards)
 
         if step % args.log_interval == 0:
