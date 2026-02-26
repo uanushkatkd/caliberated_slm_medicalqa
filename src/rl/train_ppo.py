@@ -163,7 +163,7 @@ def main():
             return_tensors="pt",
             padding=False,
             truncation=True,
-        ).input_ids.to(model.device)
+        ).input_ids.to(device)
 
         # Generate response using PPOTrainer helper
         response_tensors = ppo_trainer.generate(
