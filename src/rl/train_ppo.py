@@ -212,7 +212,7 @@ def main():
 
         # 5) Compute reward yourself
         reward, valid = compute_reward(response_text, correct_option)
-        rewards = [torch.tensor(reward, dtype=torch.float32, device=policy_model.device)]
+        rewards = [torch.tensor(reward, dtype=torch.float32, device=model.device)]
 
         # 6) PPO step: pass query and response tensors
         ppo_trainer.step([query_tensors[0]], [response_tensors[0]], rewards)
