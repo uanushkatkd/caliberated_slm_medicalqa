@@ -111,7 +111,10 @@ def main():
     )
 
     # Load LoRA adapter on top
-    model = PeftModel.from_pretrained(model, args.sft_adapter)
+    model.pretrained_model = PeftModel.from_pretrained(
+    model.pretrained_model,
+    args.sft_adapter,
+)
 
     # Reference model (frozen copy)
     ref_model = AutoModelForCausalLMWithValueHead.from_pretrained(
@@ -119,7 +122,7 @@ def main():
         torch_dtype=dtype,
         device_map="auto" if device == "cuda" else None,
     )
-    ref_model = PeftModel.from_pretrained(ref_model, args.sft_adapter)
+    ref_model.pretrained_model = PeftModel.from_pretrained(ref_model.pretrained_model, args.sft_adapter)
 
     # Move to device if needed
     if device != "cuda":
