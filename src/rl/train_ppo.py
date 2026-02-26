@@ -170,7 +170,7 @@ def main():
         train_dataset=dataset,
         data_collator=data_collator,
         processing_class=tokenizer,
-        reward_model=None,
+        reward_model=value_model,
     )
 
     # Put model on device if not using device_map
