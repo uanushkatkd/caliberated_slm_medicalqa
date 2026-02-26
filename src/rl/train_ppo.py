@@ -157,7 +157,6 @@ def main():
         prompt = ex["prompt"]
         correct_option = ex["correct_option"]
 
-        # Tokenize prompt
         query_tensors = tokenizer(
             prompt,
             return_tensors="pt",
@@ -165,9 +164,10 @@ def main():
             truncation=True,
         ).input_ids.to(device)
 
-        # Generate response using PPOTrainer helper
+        query_tensor = query_tensors[0]  # shape: (seq_len,)
+
         response_tensors = ppo_trainer.generate(
-            query_tensors,
+            [query_tensor],
             max_new_tokens=64,
             do_sample=True,
             top_p=0.9,
@@ -175,23 +175,21 @@ def main():
             pad_token_id=tokenizer.eos_token_id,
         )
 
-        # Decode response
-        response_text = tokenizer.decode(response_tensors[0], skip_special_tokens=True)
+        response_tensor = response_tensors[0]
 
-        # Compute reward yourself
+        response_text = tokenizer.decode(response_tensor, skip_special_tokens=True)
+
         reward, valid = compute_reward(response_text, correct_option)
-        rewards = [torch.tensor(reward, dtype=torch.float32, device=model.device)]
+        rewards = [torch.tensor(reward, dtype=torch.float32, device=device)]
 
-        # PPO update step (OLD API)
-        ppo_trainer.step([query_tensors[0]], [response_tensors[0]], rewards)
+        ppo_trainer.step([query_tensor], [response_tensor], rewards)
 
         if step % args.log_interval == 0:
             print(f"Step {step}, reward={reward}, valid={valid}")
 
         if step >= args.max_steps:
             break
-
-    # Save final model + tokenizer
+        # Save final model + tokenizer
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
     print(f"Model saved to {args.output_dir}")
