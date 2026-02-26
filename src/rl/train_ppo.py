@@ -172,61 +172,64 @@ def main():
         processing_class=tokenizer,
         reward_model=value_model,
     )
+    # print([m for m in dir(ppo_trainer) if "step" in m or "train" in m])
+    print(dir(ppo_trainer))
 
-    # Put model on device if not using device_map
-    if device != "cuda":
-        model.to(device)
-        ref_model.to(device)
 
-    # PPO training loop
-    # PPO training loop
-    for step, ex in enumerate(dataset):
-        prompt = ex["prompt"]
-        correct_option = ex["correct_option"]
+    # # Put model on device if not using device_map
+    # if device != "cuda":
+    #     model.to(device)
+    #     ref_model.to(device)
 
-        # 1) Tokenize prompt
-        inputs = tokenizer(
-            prompt,
-            return_tensors="pt",
-            padding=False,
-            truncation=True,
-        )
-        query_tensors = inputs.input_ids.to(model.device)
+    # # PPO training loop
+    # # PPO training loop
+    # for step, ex in enumerate(dataset):
+    #     prompt = ex["prompt"]
+    #     correct_option = ex["correct_option"]
 
-        # 2) Generate with the POLICY model (not PPOTrainer)
-        with torch.no_grad():
-            gen_outputs = model.generate(
-                query_tensors,
-                max_new_tokens=64,                 # tune this
-                do_sample=True,
-                top_p=0.9,
-                temperature=0.7,
-                pad_token_id=tokenizer.eos_token_id,
-            )
+    #     # 1) Tokenize prompt
+    #     inputs = tokenizer(
+    #         prompt,
+    #         return_tensors="pt",
+    #         padding=False,
+    #         truncation=True,
+    #     )
+    #     query_tensors = inputs.input_ids.to(model.device)
 
-        # 3) Slice out only the newly generated tokens (the response)
-        response_tensors = gen_outputs[:, query_tensors.shape[1]:]
+    #     # 2) Generate with the POLICY model (not PPOTrainer)
+    #     with torch.no_grad():
+    #         gen_outputs = model.generate(
+    #             query_tensors,
+    #             max_new_tokens=64,                 # tune this
+    #             do_sample=True,
+    #             top_p=0.9,
+    #             temperature=0.7,
+    #             pad_token_id=tokenizer.eos_token_id,
+    #         )
 
-        # 4) Decode response text (for your custom reward)
-        response_text = tokenizer.decode(response_tensors[0], skip_special_tokens=True)
+    #     # 3) Slice out only the newly generated tokens (the response)
+    #     response_tensors = gen_outputs[:, query_tensors.shape[1]:]
 
-        # 5) Compute reward yourself
-        reward, valid = compute_reward(response_text, correct_option)
-        rewards = [torch.tensor(reward, dtype=torch.float32, device=model.device)]
+    #     # 4) Decode response text (for your custom reward)
+    #     response_text = tokenizer.decode(response_tensors[0], skip_special_tokens=True)
 
-        # 6) PPO step: pass query and response tensors
-        ppo_trainer.step([query_tensors[0]], [response_tensors[0]], rewards)
+    #     # 5) Compute reward yourself
+    #     reward, valid = compute_reward(response_text, correct_option)
+    #     rewards = [torch.tensor(reward, dtype=torch.float32, device=model.device)]
 
-        if step % args.log_interval == 0:
-            print(f"Step {step}, reward={reward}, valid={valid}")
+    #     # 6) PPO step: pass query and response tensors
+    #     ppo_trainer.train_step([query_tensors[0]], [response_tensors[0]], rewards)
 
-        if step >= args.max_steps:
-            break
+    #     if step % args.log_interval == 0:
+    #         print(f"Step {step}, reward={reward}, valid={valid}")
 
-    # Save final model + tokenizer
-    model.save_pretrained(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
-    print(f"Model saved to {args.output_dir}")
+    #     if step >= args.max_steps:
+    #         break
+
+    # # Save final model + tokenizer
+    # model.save_pretrained(args.output_dir)
+    # tokenizer.save_pretrained(args.output_dir)
+    # print(f"Model saved to {args.output_dir}")
 
 
 if __name__ == "__main__":
