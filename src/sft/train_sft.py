@@ -6,7 +6,8 @@ from datasets import load_dataset
 from transformers import (
     Trainer,
     TrainingArguments,
-    DataCollatorForLanguageModeling,
+    DataCollatorForLanguageModeling, DataCollatorForSeq2Seq
+
     
 )
 
@@ -61,38 +62,51 @@ def load_sft_dataset(train_file, val_file):
     # return tokens
 
 def tokenize_fn(example, tokenizer, max_length):
-    prompt = example["prompt"]
-    response = example["response"]
+    # ✅ Format as chat (REQUIRED for instruct models)
+    messages = [
+        {"role": "user", "content": example["prompt"]},
+        {"role": "assistant", "content": example["response"]},
+    ]
 
-    full_text = prompt + "\n" + response
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=False
+    )
 
-    tokenized_full = tokenizer(
-        full_text,
+    # Tokenize full conversation
+    tokenized = tokenizer(
+        text,
         truncation=True,
         max_length=max_length,
         padding=False
     )
 
-    tokenized_prompt = tokenizer(
-        prompt,
-        truncation=True,
-        max_length=max_length,
-        padding=False
-    )
-
-    input_ids = tokenized_full["input_ids"]
+    input_ids = tokenized["input_ids"]
     labels = input_ids.copy()
 
-    prompt_len = len(tokenized_prompt["input_ids"])
+    # 🔥 Mask user part (train only on assistant response)
+    assistant_text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": example["prompt"]}],
+        tokenize=False,
+        add_generation_prompt=True
+    )
 
+    prompt_tokens = tokenizer(
+        assistant_text,
+        truncation=True,
+        max_length=max_length,
+        padding=False
+    )
+
+    prompt_len = len(prompt_tokens["input_ids"])
     labels[:prompt_len] = [-100] * prompt_len
 
     return {
         "input_ids": input_ids,
         "labels": labels,
-        "attention_mask": tokenized_full["attention_mask"]
+        "attention_mask": tokenized["attention_mask"]
     }
-
 
 def main():
     args = parse_args()
@@ -147,12 +161,11 @@ def main():
         batched=False
     )
 
-    # data_collator = DataCollatorForLanguageModeling(
-    #     tokenizer=tokenizer,
-    #     mlm=False
-    # )
-    data_collator = None
-    
+    data_collator = DataCollatorForSeq2Seq(
+        tokenizer=tokenizer,
+        padding=True,
+        return_tensors="pt"
+    )    
     
 
     use_fp16 = device == "cuda"
@@ -168,7 +181,7 @@ def main():
         learning_rate=1e-4,
         warmup_steps=50,
         max_grad_norm=1.0,
-        fp16=True,
+        fp16=use_fp16,
         bf16=False,
         logging_steps=10,
         eval_strategy="steps",
@@ -178,7 +191,6 @@ def main():
         report_to="wandb",
         dataloader_pin_memory=False,
         gradient_checkpointing=True,
-        max_grad_norm=1.0
     )
     trainer = Trainer(
         model=model,
