@@ -47,18 +47,51 @@ def load_sft_dataset(train_file, val_file):
     )
 
 
-def tokenize_fn(example, tokenizer, max_length):
-    text = example["prompt"] + "\n" + example["response"]
+# def tokenize_fn(example, tokenizer, max_length):
+#     text = example["prompt"] + "\n" + example["response"]
 
-    tokens = tokenizer(
-        text,
+#     tokens = tokenizer(
+#         text,
+#         truncation=True,
+#         max_length=max_length,
+#         padding=False
+#     )
+
+#     tokens["labels"] = tokens["input_ids"].copy()
+    # return tokens
+
+def tokenize_fn(example, tokenizer, max_length):
+    prompt = example["prompt"]
+    response = example["response"]
+
+    full_text = prompt + "\n" + response
+
+    tokenized_full = tokenizer(
+        full_text,
         truncation=True,
         max_length=max_length,
         padding=False
     )
 
-    tokens["labels"] = tokens["input_ids"].copy()
-    return tokens
+    tokenized_prompt = tokenizer(
+        prompt,
+        truncation=True,
+        max_length=max_length,
+        padding=False
+    )
+
+    input_ids = tokenized_full["input_ids"]
+    labels = input_ids.copy()
+
+    prompt_len = len(tokenized_prompt["input_ids"])
+
+    labels[:prompt_len] = [-100] * prompt_len
+
+    return {
+        "input_ids": input_ids,
+        "labels": labels,
+        "attention_mask": tokenized_full["attention_mask"]
+    }
 
 
 def main():
@@ -114,12 +147,17 @@ def main():
         batched=False
     )
 
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False
-    )
+    # data_collator = DataCollatorForLanguageModeling(
+    #     tokenizer=tokenizer,
+    #     mlm=False
+    # )
+    data_collator = None
+    
+    
 
-    # use_fp16 = device == "cuda"
+    use_fp16 = device == "cuda"
+    sample = tokenized["train"][0]
+    print(sample["labels"][:30])
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
@@ -127,19 +165,20 @@ def main():
         per_device_eval_batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum_steps,
         num_train_epochs=args.epochs,
-        learning_rate=args.lr,
-        fp16=False,
-        bf16=True,
-        logging_steps=20,
+        learning_rate=1e-4,
+        warmup_steps=50,
+        max_grad_norm=1.0,
+        fp16=True,
+        bf16=False,
+        logging_steps=10,
         eval_strategy="steps",
         eval_steps=200,
         save_steps=200,
         save_total_limit=2,
-        report_to="wandb",   # ✅ logging enabled
+        report_to="wandb",
         dataloader_pin_memory=False,
         gradient_checkpointing=True,
     )
-
     trainer = Trainer(
         model=model,
         args=training_args,
