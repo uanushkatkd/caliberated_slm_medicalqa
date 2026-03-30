@@ -170,7 +170,7 @@ def main():
 
     use_fp16 = device == "cuda"
     sample = tokenized["train"][0]
-    print(sample["labels"][:30])
+    print(sample["labels"][:100])
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
