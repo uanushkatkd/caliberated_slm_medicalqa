@@ -86,7 +86,7 @@ def main():
         args.model_name,
         device=device,
         use_fp16=True,
-        quantization_config=bnb_config
+        quantization_config=None
     )
 
     # 🔥 VERY IMPORTANT for k-bit training
