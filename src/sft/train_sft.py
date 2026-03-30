@@ -1,63 +1,115 @@
 # src/sft/train_sft.py
 
+import argparse
 import torch
 from datasets import load_dataset
-from transformers import Trainer, TrainingArguments, DataCollatorForLanguageModeling
+from transformers import (
+    Trainer,
+    TrainingArguments,
+    DataCollatorForLanguageModeling,
+    BitsAndBytesConfig
+)
 
 from src.models.load_model import load_base_model, get_device
 from src.models.lora_config import get_lora_config
-from peft import get_peft_model
+from peft import get_peft_model, prepare_model_for_kbit_training
+
+import wandb
 
 
-MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
-TRAIN_FILE = "data/processed/sft_train.jsonl"
-VAL_FILE = "data/processed/sft_val.jsonl"
-OUTPUT_DIR = "outputs/sft"
+def parse_args():
+    parser = argparse.ArgumentParser(description="SFT Training Script")
+
+    parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-1B-Instruct")
+    parser.add_argument("--train_file", type=str, required=True)
+    parser.add_argument("--val_file", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, default="outputs/sft")
+
+    parser.add_argument("--max_length", type=int, default=256)  # reduced
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--grad_accum_steps", type=int, default=8)
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=2e-4)
+
+    parser.add_argument("--lora_r", type=int, default=8)
+    parser.add_argument("--lora_alpha", type=int, default=16)
+
+    parser.add_argument("--wandb_project", type=str, default="sft-training")
+    parser.add_argument("--wandb_run_name", type=str, default="llama-sft")
+
+    return parser.parse_args()
 
 
-def load_sft_dataset():
+def load_sft_dataset(train_file, val_file):
     return load_dataset(
         "json",
-        data_files={
-            "train": TRAIN_FILE,
-            "validation": VAL_FILE
-        }
+        data_files={"train": train_file, "validation": val_file}
     )
 
 
-MAX_LENGTH = 512  # Reduced for 16GB RAM
-
-
-def tokenize_fn(example, tokenizer):
+def tokenize_fn(example, tokenizer, max_length):
     text = example["prompt"] + "\n" + example["response"]
+
     tokens = tokenizer(
         text,
         truncation=True,
-        max_length=MAX_LENGTH,
+        max_length=max_length,
         padding=False
     )
+
     tokens["labels"] = tokens["input_ids"].copy()
     return tokens
 
 
 def main():
+    args = parse_args()
+
+    # ✅ W&B init
+    wandb.init(
+        project=args.wandb_project,
+        name=args.wandb_run_name,
+        config=vars(args)
+    )
+
     device = get_device()
     print(f"Using device: {device}")
 
-    # Load model in fp16 to save memory (~6GB instead of ~12GB)
-    model, tokenizer = load_base_model(MODEL_NAME, device=device, use_fp16=True)
+    # ✅ 4-bit quantization (BIG MEMORY SAVE)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4"
+    )
 
-    # Enable gradient checkpointing BEFORE wrapping with PEFT
+    model, tokenizer = load_base_model(
+        args.model_name,
+        device=device,
+        use_fp16=True,
+        quantization_config=bnb_config
+    )
+
+    # 🔥 VERY IMPORTANT for k-bit training
+    model = prepare_model_for_kbit_training(model)
+
     model.gradient_checkpointing_enable()
 
-    lora_config = get_lora_config(r=4, lora_alpha=8)
+    lora_config = get_lora_config(
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha
+    )
+
     model = get_peft_model(model, lora_config)
+
+    # 🔥 Fix for gradient checkpointing
+    model.enable_input_require_grads()
+
     model.print_trainable_parameters()
 
-    dataset = load_sft_dataset()
+    dataset = load_sft_dataset(args.train_file, args.val_file)
 
     tokenized = dataset.map(
-        lambda x: tokenize_fn(x, tokenizer),
+        lambda x: tokenize_fn(x, tokenizer, args.max_length),
         remove_columns=dataset["train"].column_names,
         batched=False
     )
@@ -67,25 +119,24 @@ def main():
         mlm=False
     )
 
-    # MPS doesn't support fp16 mixed-precision training
     use_fp16 = device == "cuda"
 
     training_args = TrainingArguments(
-        output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
-        gradient_accumulation_steps=16,
-        num_train_epochs=1,
-        learning_rate=2e-4,
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.grad_accum_steps,
+        num_train_epochs=args.epochs,
+        learning_rate=args.lr,
         fp16=use_fp16,
-        logging_steps=50,
+        logging_steps=20,
         eval_strategy="steps",
-        eval_steps=500,
-        save_steps=500,
+        eval_steps=200,
+        save_steps=200,
         save_total_limit=2,
-        report_to="none",
+        report_to="wandb",   # ✅ logging enabled
         dataloader_pin_memory=False,
-        gradient_checkpointing=True,  # Saves memory by recomputing activations
+        gradient_checkpointing=True,
     )
 
     trainer = Trainer(
@@ -98,8 +149,10 @@ def main():
 
     trainer.train()
 
-    model.save_pretrained(OUTPUT_DIR)
-    tokenizer.save_pretrained(OUTPUT_DIR)
+    model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
+
+    wandb.finish()
 
 
 if __name__ == "__main__":

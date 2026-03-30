@@ -1,14 +1,14 @@
+# src/eval/metrics.py
+
 import numpy as np
 from sklearn.metrics import roc_auc_score
+
 
 def accuracy(y_true, y_pred):
     return sum(int(a == b) for a, b in zip(y_true, y_pred)) / max(1, len(y_true))
 
+
 def expected_calibration_error(confidences, correct, n_bins=10):
-    """
-    confidences: list[float]
-    correct: list[int] (1 if correct else 0)
-    """
     confidences = np.array(confidences)
     correct = np.array(correct)
 
@@ -25,8 +25,8 @@ def expected_calibration_error(confidences, correct, n_bins=10):
 
     return float(ece)
 
+
 def auroc(confidences, correct):
-    # If all labels same, AUROC is undefined
     if len(set(correct)) < 2:
         return float("nan")
     return float(roc_auc_score(correct, confidences))

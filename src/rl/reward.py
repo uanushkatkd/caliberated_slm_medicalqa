@@ -11,6 +11,7 @@ def compute_reward(model_output_text: str, correct_option: str):
         return -1.0, False
 
     correct = (pred == correct_option)
+    
 
     if correct:
         r = math.log(conf + EPS)
