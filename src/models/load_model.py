@@ -47,7 +47,8 @@ def load_base_model(
 
     # 🔹 Dtype
     if device == "cuda":
-        dtype = torch.float16 if use_fp16 else torch.float32
+        # dtype = torch.float16 if use_fp16 else torch.float32
+        dtype = torch.bfloat16
     else:
         dtype = torch.float32  # safer for CPU/MPS
 

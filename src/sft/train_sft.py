@@ -90,7 +90,7 @@ def main():
     )
 
     # 🔥 VERY IMPORTANT for k-bit training
-    model = prepare_model_for_kbit_training(model)
+    # model = prepare_model_for_kbit_training(model)
 
     model.gradient_checkpointing_enable()
 
@@ -119,7 +119,7 @@ def main():
         mlm=False
     )
 
-    use_fp16 = device == "cuda"
+    # use_fp16 = device == "cuda"
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
@@ -128,7 +128,8 @@ def main():
         gradient_accumulation_steps=args.grad_accum_steps,
         num_train_epochs=args.epochs,
         learning_rate=args.lr,
-        fp16=use_fp16,
+        fp16=False,
+        bf16=True,
         logging_steps=20,
         eval_strategy="steps",
         eval_steps=200,
