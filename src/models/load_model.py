@@ -58,7 +58,7 @@ def load_base_model(
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map="auto",
-            quantization_config=quantization_config,
+            quantization_config=None,
             trust_remote_code=True,
         )
 
