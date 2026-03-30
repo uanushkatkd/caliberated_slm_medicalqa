@@ -147,7 +147,7 @@ def main():
         data_collator=data_collator
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=False)
 
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
