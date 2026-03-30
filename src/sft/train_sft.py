@@ -7,7 +7,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     DataCollatorForLanguageModeling,
-    BitsAndBytesConfig
+    
 )
 
 from src.models.load_model import load_base_model, get_device
@@ -75,12 +75,12 @@ def main():
     print(f"Using device: {device}")
 
     # ✅ 4-bit quantization (BIG MEMORY SAVE)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4"
-    )
+    # bnb_config = BitsAndBytesConfig(
+    #     load_in_4bit=True,
+    #     bnb_4bit_compute_dtype=torch.float16,
+    #     bnb_4bit_use_double_quant=True,
+    #     bnb_4bit_quant_type="nf4"
+    # )
 
     model, tokenizer = load_base_model(
         args.model_name,
