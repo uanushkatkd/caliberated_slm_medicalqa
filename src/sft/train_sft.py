@@ -178,6 +178,7 @@ def main():
         report_to="wandb",
         dataloader_pin_memory=False,
         gradient_checkpointing=True,
+        max_grad_norm=1.0
     )
     trainer = Trainer(
         model=model,
